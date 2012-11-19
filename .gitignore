@@ -1,0 +1,5 @@
+# Netbeans project folder
+nbproject/*
+
+# Test configurations
+*_test.conf
