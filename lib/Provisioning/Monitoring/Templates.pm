@@ -40,7 +40,7 @@ BEGIN {
 	our @ISA = qw(Exporter);
 	
 	# functions and variables which are exported by default
-	our @EXPORT = qw(initTemplates getTemplateID);
+	our @EXPORT = qw(initTemplates getTemplateID listTemplates);
 	
 	# functions and variables which can be optionally exported
 	our @EXPORT_OK = qw();
@@ -103,5 +103,32 @@ BEGIN {
 					}		
 	}
 	
+	
+	###############
+	# Zabbix API list all templates on the Zabbix server
+	#
+	
+	sub listTemplates {
+		my $response;
+		my $json = {
+			jsonrpc => $jsonRPC,
+			method => "template.get",
+			params => { 
+				output => "extend"
+	
+			},
+			auth => $authID,
+			id => 1
+		};
+		$response = $client->call($zabbixApiURL, $json);
+			
+		# Check if response was successful	
+		if($response->content->{'result'}) {
+				return $response->content->{'result'};
+				} else {
+					logger("error","List Templates failed.");
+					return 0;
+					}
+		}
 	
 1; # Return 1

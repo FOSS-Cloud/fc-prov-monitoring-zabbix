@@ -40,7 +40,7 @@ BEGIN {
 	our @ISA = qw(Exporter);
 	
 	# functions and variables which are exported by default
-	our @EXPORT = qw(initHostgroups createHostGroup getHostGroupID deleteHostGroup);
+	our @EXPORT = qw(initHostgroups createHostGroup getHostGroupID deleteHostGroup listHostgroups);
 	
 	# functions and variables which can be optionally exported
 	our @EXPORT_OK = qw(existNameHostGroup existIDHostGroup);
@@ -219,6 +219,34 @@ BEGIN {
 		return $response->content->{'result'};
 		
 	}
+	
+	
+	###############
+	# Zabbix API list all host groups on the Zabbix server
+	#
+	
+	sub listHostgroups {
+		my $response;
+		my $json = {
+			jsonrpc => $jsonRPC,
+			method => "hostgroup.get",
+			params => { 
+				output => "extend",
+			},
+			auth => $authID,
+			id => 1
+		};
+		$response = $client->call($zabbixApiURL, $json);
+		
+		# Check if response was successful
+		if($response->content->{'result'}) {
+				return $response->content->{'result'};
+				} else {
+					logger("error","List host groups failed.");
+					return 0;
+					}	
+		}
+	
 
 	
 1;  # don't forget to return a true value from the file

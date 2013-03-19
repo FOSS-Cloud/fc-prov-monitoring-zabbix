@@ -40,7 +40,7 @@ BEGIN {
 	our @ISA = qw(Exporter);
 	
 	# functions and variables which are exported by default
-	our @EXPORT = qw(initHosts getHosts getHostID createHost createHostByTemplate deleteHost setStatusHost unlinkTemplatesHost);
+	our @EXPORT = qw(initHosts getHosts getHostID createHost createHostByTemplate deleteHost setStatusHost unlinkTemplatesHost getHostgroupsOfHost addHostToHostgroup removeHostFromHostgroup linkTemplateHost);
 	
 	# functions and variables which can be optionally exported
 	our @EXPORT_OK = qw(existNameHost);
@@ -293,6 +293,29 @@ BEGIN {
 	}
 	
 	###############
+	# Zabbix API get hostgroups that the host belongs to
+	#
+	
+	sub getHostgroupsOfHost {
+		my ($hostID) = @_;
+		
+		my $response;
+		my $json = {
+			jsonrpc => $jsonRPC,
+			method => "hostgroup.get",
+			params => {
+				output => "extend",
+				hostids => [$hostID]
+			},
+			auth => $authID,
+			id => 1
+		};
+		$response = $client->call($zabbixApiURL, $json);
+		
+		return $response->content->{'result'};
+	}
+	
+	###############
 	# Zabbix API change status
 	# @Param : 
 	#		$hostID : id of the host that needs a status update
@@ -326,15 +349,128 @@ BEGIN {
 	}
 	
 	###############
-	# Zabbix API unlink templates
+	# Zabbix API add Host to Hostgroup
+	# @Param : 
+	#		$hostID : id of the host that needs to be added to a host group
+	#		$hostgroupID : id of the host group the host needs to be added to
+	# @Return : 	Returns the hostID as a scalar.
+	#
+	
+	sub addHostToHostgroup {
+		my ($hostID, $hostgroupID) = @_;
+		
+		my $response;
+		my $json = {
+			jsonrpc => $jsonRPC,
+			method => "host.massadd",
+			params => {
+				hosts => [
+					{
+						hostid => $hostID
+					}
+				],
+				groups => [
+					{
+						groupid => $hostgroupID
+					}
+				] 
+				},
+				auth => $authID,
+				id => 1
+			};
+		$response = $client->call($zabbixApiURL, $json);
+
+		# Check if response was successful	
+		if($response->content->{'result'}) {
+				return $response->content->{'result'}->{'hostids'}[0];
+				} else {
+					logger("error","Add Host to Hostgroup failed.");
+					return 0;
+					}
+	}
+	
+	###############
+	# Zabbix API remove Host from Hostgroup
+	# @Param : 
+	#		$hostID : id of the host that needs to be removed from a host group
+	#		$hostgroupID : id of the host group the host needs to be removed from
+	# @Return : 	Returns the hostID as a scalar.
+	#
+	sub removeHostFromHostgroup {
+		my ($hostID, $hostgroupID) = @_;
+		
+		my $response;
+		my $json = {
+			jsonrpc => $jsonRPC,
+			method => "host.massremove",
+			params => {
+				hostids => [$hostID],
+				groupids => [$hostgroupID] 
+				},
+				auth => $authID,
+				id => 1
+			};
+		$response = $client->call($zabbixApiURL, $json);
+		# Check if response was successful	
+		if($response->content->{'result'}) {
+				return $response->content->{'result'}->{'hostids'}[0];
+				} else {
+					logger("error","Remove Host from Hostgroup failed.");
+					return 0;
+					}		
+	}
+	
+	###############
+	# Zabbix API link template to host
+	# @Param : 
+	#		$hostID : id of the host that needs to be added to a host group
+	#		$hostgroupID : id of the host group the host needs to be added to
+	# @Return : 	Returns the hostID as a scalar.
+	#
+	
+	sub linkTemplateHost {
+		my ($hostID, $templateID) = @_;
+		
+		my $response;
+		my $json = {
+			jsonrpc => $jsonRPC,
+			method => "host.massadd",
+			params => {
+				hosts => [
+					{
+						hostid => $hostID
+					}
+				],
+				templates => [
+					{
+						templateid => $templateID
+					}
+				] 
+				},
+				auth => $authID,
+				id => 1
+			};
+		$response = $client->call($zabbixApiURL, $json);
+		# Check if response was successful	
+		if($response->content->{'result'}) {
+				return $response->content->{'result'}->{'hostids'}[0];
+				} else {
+					logger("error","Link template to Host failed.");
+					return 0;
+					}	
+	}
+	
+
+	###############
+	# Zabbix API unlink templates from host
 	# @Param :
 	#		$hostID : id of the host that needs an update
-	#		@templatesIDs : a list of IDs of the templates that need to be unlinked from the host.
+	#		$templateID : Can be a scalar that contains an id or for multiple ids a structure like: [ {templateid => $templateID1}, {templateid => $templateID2} ];
 	# @Return : 	Returns the hostID as a scalar.
 	#
 	
 	sub unlinkTemplatesHost {
-		my ($hostID, @templatesIDs) = @_;
+		my ($hostID, $templateID) = @_;
 		
 		my $response;
 		my $json = {
@@ -342,14 +478,20 @@ BEGIN {
 			method => "host.update",
 			params => {
 				hostid => $hostID,
-				templates_clear => @templatesIDs
+				templates_clear => $templateID
 				},
 				auth => $authID,
 				id => 1
 			};
 		$response = $client->call($zabbixApiURL, $json);
 		
-		return $response->content->{'result'}->{'hostids'}[0];
+		# Check if response was successful	
+		if($response->content->{'result'}) {
+				return $response->content->{'result'}->{'hostids'}[0];
+				} else {
+					logger("error","Unlink template from Host failed.");
+					return 0;
+					}
 		}
 	
 	
