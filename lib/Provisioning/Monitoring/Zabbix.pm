@@ -6,7 +6,7 @@ package Provisioning::Monitoring::Zabbix;
 #                    support@foss-group.de
 #
 # Authors:
-#  Name Surname <name.surname@domain.tld>
+#  Name Surname <stijn.van.paesschen@student.groept.be>
 #  
 # Licensed under the EUPL, Version 1.1 or – as soon they
 # will be approved by the European Commission - subsequent
@@ -33,6 +33,8 @@ use Config::IniFiles;
 use Module::Load;
 
 use Provisioning::Log;
+
+use Provisioning::Backend::LDAP;
 
 require Exporter;
 
@@ -91,6 +93,20 @@ sub processEntry{
 
   my ( $entry, $state ) = @_;
 
+	my $customer_uid = getValue( $entry, "sstBelongsToCustomerUID");
+	my $subtree = "ou=customers,dc=foss-cloud,dc=org";
+	my $filter = "(uid=$customer_uid)";
+	
+	my @results = simpleSearch( $subtree, $filter, "sub");
+	
+	if ( @results != 1 )
+	{
+		print "Too much results \n";
+	} else {
+		my $customer_name = getValue($results[0], "o");
+		print "Customer name is $customer_name \n";
+	}
+	
 
   # Do your stuff here ...
 

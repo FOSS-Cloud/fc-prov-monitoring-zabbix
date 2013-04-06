@@ -6,7 +6,7 @@ package Provisioning::Monitoring::Authentication;
 #                    support@foss-group.de
 #
 # Authors:
-#  Stijn Van Paesschen <stijn_van_paesschen@student.groept.be>
+#  Stijn Van Paesschen <stijn.van.paesschen@student.groept.be>
 #  
 # Licensed under the EUPL, Version 1.1 or – as soon they
 # will be approved by the European Commission - subsequent
@@ -45,7 +45,50 @@ BEGIN {
 	# functions and variables which can be optionally exported
 	our @EXPORT_OK = qw(getAuthID);
 	
-	}	
+	}
+
+=pod
+
+=head1 Name
+
+Authentication.pm
+
+=head1 Synopsis
+
+use Zabbixapi::Authentication;
+my $authenticationID = login($url, $user, $password);
+
+=head1 Description
+
+This module is responsible to authenticate a certain user against the zabbix server, and returns an ID the user can use as long as he is logged on.
+
+=head2 Uses
+
+=over
+
+=item Log
+
+=item JSON::RPC::Client
+
+=back
+
+=head2 Methods
+
+=over
+
+=item login 
+
+This method is used to log on a user on the Zabbix server. It returns the authentication ID that is needed for other methods that communicate with the Zabbix server.
+
+=item logout 
+
+This method invalidates the authentication ID. It returns '1' on success.
+
+=item getAuthID
+
+This method returns the authentication ID, if there has been a login in this session.
+
+=cut	
 
 # Private
         
@@ -64,7 +107,7 @@ BEGIN {
 	    
 	    my $response;
 	    my $json = {
-		    jsonrpc => "2.0",
+		    jsonrpc => $jsonRPC,
 		    method => "user.login",
 		    params => {
 			    user => $user,
@@ -97,7 +140,7 @@ BEGIN {
 	    
 	    my $response;
 	    my $json = {
-		    jsonrpc => "2.0",
+		    jsonrpc => $jsonRPC,
 		    method => "user.logout",
 		    params => {
 		    },
@@ -131,3 +174,23 @@ BEGIN {
     
     # END { ... }       # module clean-up code here (global destructor)
     1;  # don't forget to return a true value from the file
+
+__END__
+    
+=back
+
+=head1 Version
+
+Created 2013 by Stijn Van Paesschen <stijn.van.paesschen@student.groept.be>
+
+=over
+
+=item 2013-02-12 Stijn Van Paesschen created.
+
+=item 2013-03-27 Stijn Van Paesschen modified.
+
+Added the POD2text documentation.
+
+=back
+
+=cut

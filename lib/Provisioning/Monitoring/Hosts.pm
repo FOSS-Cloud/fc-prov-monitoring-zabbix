@@ -46,7 +46,42 @@ BEGIN {
 	our @EXPORT_OK = qw(existNameHost);
 	
 	}
-			
+
+=pod
+
+=head1 Name
+
+Hosts.pm
+
+=head1 Synopsis
+
+use Zabbixapi::Hosts;
+initHosts($authenticationID, $url, $jsonRPC_client);
+
+=head1 Description
+
+This module contains all methods that are used to get information from or make change to Hosts on the Zabbix Server.
+
+=head2 Uses
+
+=over
+
+=item Log
+
+=item JSON::RPC::Client
+
+=back
+
+=head2 Methods
+
+=over
+
+=item initHosts 
+
+This method initialises some often used values in the module. I.e. a new json rpc client, the zabbix version (e.g. '2.0'), the authentication ID and the zabbix API url.
+This method needs to be called before using any other method in the module, it's similar to a constructor in OO programming.
+
+=cut				
 
 # Private
         
@@ -84,6 +119,19 @@ BEGIN {
 	#
 
 	sub getHosts {
+		
+=pod
+
+=over
+
+=item getHosts($zabbixOption)
+
+Get zabbix hosts using a filter option of the zabbix api.
+
+=back
+
+=cut
+		
 		my ($zabbixOption) = @_;
 		
 		my $response;
@@ -115,6 +163,19 @@ BEGIN {
 	#
 
 	sub getHostID {
+		
+=pod
+
+=over
+
+=item getHostID($name)
+
+Get zabbix hostid by the given name.
+
+=back
+
+=cut
+		
 		my ($name) = @_;
 		
 		my $response;
@@ -150,6 +211,19 @@ BEGIN {
 	#
 
 	sub createHost {
+		
+=pod
+
+=over
+
+=item createHost($hostName, $hostGroupID)
+
+Create a new host by a given name and add it to a hostgroup.
+
+=back
+
+=cut
+		
 		my ($hostName, $hostGroupID) = @_;
 		
 		if(!existNameHost($hostName)) {
@@ -191,6 +265,19 @@ BEGIN {
 	#
 
 	sub createHostByTemplate {
+		
+=pod
+
+=over
+
+=item createHostByTemplate($hostName, $hostGroupID, $templateID)
+
+Create a new host by a given name using an existing zabbix template and add it to a hostgroup.
+
+=back
+
+=cut
+		
 		my ($hostName, $hostGroupID, $templateID) = @_;
 		
 		if(!existNameHost($hostName)) {
@@ -247,6 +334,19 @@ BEGIN {
 	#
 
 	sub deleteHost {
+		
+=pod
+
+=over
+
+=item deleteHost($hostID)
+
+Delete host by hostID.
+
+=back
+
+=cut
+		
 		my ($hostID) = @_;
 		
 		my $response; 
@@ -275,6 +375,8 @@ BEGIN {
 	#
 	
 	sub existNameHost {
+
+		
 		my ($name) = @_;
 		
 		my $response;
@@ -297,6 +399,17 @@ BEGIN {
 	#
 	
 	sub getHostgroupsOfHost {
+		
+=pod
+
+=over
+
+=item getHostgroupOfHost($hostID)
+
+=back
+
+=cut		
+		
 		my ($hostID) = @_;
 		
 		my $response;
@@ -324,6 +437,19 @@ BEGIN {
 	#
 	
 	sub setStatusHost {
+		
+=pod
+
+=over
+
+=item setStatusHost($hostID, $status)
+
+Set the host on monitored ($status = 0) or not-monitored ($status = 1)
+
+=back
+
+=cut		
+		
 		my ($hostID, $status) = @_;
 		
 		# Make sure $status is 0 or 1 . 
@@ -357,6 +483,17 @@ BEGIN {
 	#
 	
 	sub addHostToHostgroup {
+		
+=pod
+
+=over
+
+=item addHostToHostgroup($hostID, $hostgroupID)
+
+=back
+
+=cut		
+		
 		my ($hostID, $hostgroupID) = @_;
 		
 		my $response;
@@ -397,6 +534,19 @@ BEGIN {
 	# @Return : 	Returns the hostID as a scalar.
 	#
 	sub removeHostFromHostgroup {
+		
+=pod
+
+=over
+
+=item removeHostFromHostgroup($hostID, $hostgroupID)
+
+Delete host by hostID.
+
+=back
+
+=cut		
+		
 		my ($hostID, $hostgroupID) = @_;
 		
 		my $response;
@@ -424,11 +574,24 @@ BEGIN {
 	# Zabbix API link template to host
 	# @Param : 
 	#		$hostID : id of the host that needs to be added to a host group
-	#		$hostgroupID : id of the host group the host needs to be added to
+	#		$templateID : id of the template the host group needs to be linked to
 	# @Return : 	Returns the hostID as a scalar.
 	#
 	
 	sub linkTemplateHost {
+		
+=pod
+
+=over
+
+=item linkTemplateHost($hostID, $templateID)
+
+Link a host to a template.
+
+=back
+
+=cut		
+		
 		my ($hostID, $templateID) = @_;
 		
 		my $response;
@@ -470,6 +633,19 @@ BEGIN {
 	#
 	
 	sub unlinkTemplatesHost {
+		
+=pod
+
+=over
+
+=item unlinkTemplateHost($hostID, $templateID)
+
+Unlink a host from a template.
+
+=back
+
+=cut				
+		
 		my ($hostID, $templateID) = @_;
 		
 		my $response;

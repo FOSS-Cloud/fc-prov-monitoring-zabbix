@@ -46,7 +46,62 @@ BEGIN {
 	our @EXPORT_OK = qw(existNameHostGroup existIDHostGroup);
 	
 	}
-			
+
+=pod
+
+=head1 Name
+
+Hostgroups.pm
+
+=head1 Synopsis
+
+use Zabbixapi::Hostgroups;
+initHostgroups($authenticationID, $url, $jsonRPC_client);
+
+=head1 Description
+
+This module contains all methods that are used to get information from or make change to Hostgroups on the Zabbix Server.
+
+=head2 Uses
+
+=over
+
+=item Log
+
+=item JSON::RPC::Client
+
+=back
+
+=head2 Methods
+
+=over
+
+=item initHostgroups 
+
+This method initialises some often used values in the module. I.e. a new json rpc client, the zabbix version (e.g. '2.0'), the authentication ID and the zabbix API url.
+This method needs to be called before using any other method in the module, it's similar to a constructor in OO programming.
+
+=item createHostGroup 
+
+Creates a new hostgroup with the given name. Returns the ID of the created hostgroup and '0' on failure.
+
+=item deleteHostGroup
+
+Deletes the hostgroup with the given id. Returns the id of the deleted hostgroup on success and '0' on failure.
+
+=item getHostGroupID
+
+Returns the hostgroup ID corresponding to a given name. Or '0' on failure.
+
+=item existNameHostGroup
+
+=item existIDHostGroup
+
+=item listHostgroups
+
+Returns all hostgroups that exist on the Zabbix server or '0' on failure. 
+
+=cut						
 
 # Private
         
@@ -140,7 +195,7 @@ BEGIN {
 			
 		} else {
 			logger("error","Can not delete Hostgroup, the Hostgroup id does not exist!");
-			return -1;
+			return 0;
 		}
 		
 	}
@@ -250,3 +305,23 @@ BEGIN {
 
 	
 1;  # don't forget to return a true value from the file
+
+__END__
+    
+=back
+
+=head1 Version
+
+Created 2013 by Stijn Van Paesschen <stijn.van.paesschen@student.groept.be>
+
+=over
+
+=item 2013-02 Stijn Van Paesschen created.
+
+=item 2013-03-27 Stijn Van Paesschen modified.
+
+Added the POD2text documentation.
+
+=back
+
+=cut

@@ -46,7 +46,50 @@ BEGIN {
 	our @EXPORT_OK = qw();
 	
 	}
-			
+
+=pod
+
+=head1 Name
+
+Hostgroups.pm
+
+=head1 Synopsis
+
+use Zabbixapi::Hostgroups;
+initTemplates($authenticationID, $url, $jsonRPC_client);
+
+=head1 Description
+
+This module contains all methods that are used to get information from or make change to templates on the Zabbix Server.
+
+=head2 Uses
+
+=over
+
+=item Log
+
+=item JSON::RPC::Client
+
+=back
+
+=head2 Methods
+
+=over
+
+=item initTemplates 
+
+This method initialises some often used values in the module. I.e. a new json rpc client, the zabbix version (e.g. '2.0'), the authentication ID and the zabbix API url.
+This method needs to be called before using any other method in the module, it's similar to a constructor in OO programming.
+
+=item getTemplateID 
+
+Returns the template ID with a given name.
+
+=item listTemplates
+
+Returns all templates that exist on the Zabbix server.
+
+=cut				
 
 # Private
         
@@ -132,3 +175,23 @@ BEGIN {
 		}
 	
 1; # Return 1
+
+__END__
+    
+=back
+
+=head1 Version
+
+Created 2013 by Stijn Van Paesschen <stijn.van.paesschen@student.groept.be>
+
+=over
+
+=item 2013-02 Stijn Van Paesschen created.
+
+=item 2013-03-27 Stijn Van Paesschen modified.
+
+Added the POD2text documentation.
+
+=back
+
+=cut
