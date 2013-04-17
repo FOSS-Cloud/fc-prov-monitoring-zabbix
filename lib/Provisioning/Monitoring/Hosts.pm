@@ -673,3 +673,23 @@ Unlink a host from a template.
 	
 	
 1;  # don't forget to return a true value from the file
+
+__END__
+    
+=back
+
+=head1 Version
+
+Created 2013 by Stijn Van Paesschen <stijn.van.paesschen@student.groept.be>
+
+=over
+
+=item 2013-02 Stijn Van Paesschen created.
+
+=item 2013-04-6 Stijn Van Paesschen modified.
+
+Added the POD2text documentation.
+
+=back
+
+=cut
