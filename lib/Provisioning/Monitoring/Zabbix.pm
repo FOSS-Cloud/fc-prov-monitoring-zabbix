@@ -37,12 +37,15 @@ use JSON::RPC::Client;
 use Provisioning::Log;
 
 use Provisioning::Backend::LDAP;
+use Provisioning::Monitoring::Zabbix::Constants;
 
-use Provisioning::Monitoring::Templates;
-use Provisioning::Monitoring::Hosts;
-use Provisioning::Monitoring::Hostgroups;
-use Provisioning::Monitoring::Hostinterfaces;
-use Provisioning::Monitoring::Authentication;
+use Provisioning::Monitoring::Zabbix::Templates;
+use Provisioning::Monitoring::Zabbix::Hosts;
+use Provisioning::Monitoring::Zabbix::Hostgroups;
+use Provisioning::Monitoring::Zabbix::Hostinterfaces;
+use Provisioning::Monitoring::Zabbix::Authentication;
+use Provisioning::Monitoring::Zabbix::Usergroups;
+use Provisioning::Monitoring::Zabbix::Users;
 
 
 require Exporter;
@@ -75,23 +78,24 @@ our $VERSION = '0.01';
 #####                             Constants                               #####
 ###############################################################################
 
-my $url = "http://127.0.0.1/zabbix/api_jsonrpc.php";
+my $url = getRpcUrl();
+print "url = $url \n";
 my $client = new JSON::RPC::Client;
-my $apiuser = "Admin";
-my $apipassword = "zabbix";
+my $apiuser = "4000002";  #TODO: be able to get Zabbix-Api admin out of LDAP
+my $apipassword = "admin";
 my $authID;
 my $jsonRPC = "2.0";
 
 #Authenticate against Zabbix server
-login($url, $apiuser, $apipassword);
-$authID = Zabbixapi::Authentication::getAuthID();
-print "Authentication successful. Auth ID: " . $authID . "\n";
+$authID = login($url, $apiuser, $apipassword);
 
 # Initialize modules
 logger("error","Init Hosts failed") unless initHosts($authID, $url, $jsonRPC);
 logger("error","Init Hostgroups failed") unless initHostgroups($authID, $url, $jsonRPC);
 logger("error","Init Hostinterfaces failed") unless initHostinterfaces($authID, $url, $jsonRPC);
 logger("error","Init Templates failed") unless initTemplates($authID, $url, $jsonRPC);
+logger("error","Init Usergroups failed") unless initUsergroups($authID, $url, $jsonRPC);
+logger("error","Init Users failed") unless initUsers($authID, $url, $jsonRPC);
 
 
 # get the current service
@@ -103,9 +107,10 @@ our $service_cfg = $Provisioning::cfg;
 # load the nessecary modules
 load "$Provisioning::server_module", ':all';
 
+print "before processEntry\n";
 
 sub processEntry{
-
+print "enter processEntry. \n";
 =pod
 
 =over
@@ -118,8 +123,18 @@ sub processEntry{
 
   my ( $entry, $state ) = @_;
   
+  # If monitoring is not activated in the ldap, than exit the processEntry().
+  return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE unless (monitoringIsActive() == Provisioning::Monitoring::Zabbix::Constants::TRUE);
   
   my $error = 0;
+  
+  
+	load "Provisioning::Monitoring::Zabbix::Usergroups",':all';
+	initUsergroups($authID, $url, $jsonRPC);
+	load "Provisioning::Monitoring::Zabbix::Users",':all';
+	initUsers($authID, $url, $jsonRPC);
+  
+  
   
   # $state must be "add", "modify" or "delete" otherwise something went wrong
   switch ( $state )
@@ -153,12 +168,10 @@ sub processEntry{
                             # Write the return code from the action 
                             modifyAttribute( $entry,
                                              'sstProvisioningReturnValue',
-                                             #Provisioning::Monitoring::Zabbix::Constants::WRONG_STATE_INFORMATION,
-                                             -1,
+                                             Provisioning::Monitoring::Zabbix::Constants::WRONG_STATE_INFORMATION,
                                              connectToBackendServer("connect",1)
                                            );  
-                            #return Provisioning::Monitoring::Zabbix::Constants::WRONG_STATE_INFORMATION;
-                            return -1;
+                            return Provisioning::Monitoring::Zabbix::Constants::WRONG_STATE_INFORMATION;
                     }
   			
 	}
@@ -193,24 +206,47 @@ sub processEntry{
 	}
 	
 	
-	# Test scenario: problem
-	# Problem 1 : Can't test it on the foss-cloud-node-01, because I have no communication with zabbix server
-	# Problem 2 : I need to hard code the parameter (the vm ID), because I don't know how to get the vm ID when a virtual machine is added in the vm-manager and to the ldap.
-	my $zhid = addHost("8d7e5793-798c-4836-a8ec-a7a192da76de");
-	print "Zabbix Host id : $zhid \n";
+	### Start Zabbix part
+	my $subtree = getValue($entry, "dn");
 	
+	switch ( $subtree )
+	{
+		case "^.+,ou=people,dc=foss-cloud,dc=org" {
+			$return_value = peopleModificationHandler($entry, $state);
+			# Write the return code from the action 
+			modifyAttribute( $entry,
+							   'sstProvisioningReturnValue',
+							   $return_value,
+							   $write_connection
+							 );  
+
+			# Disconnect from the backend
+			disconnectFromServer($write_connection);
+
+			return $return_value;
+		}
+		case  "^.+, ou=monitoring,ou=services,dc=foss-cloud,dc=org"  {
+			return Provisioning::Monitoring::Zabbix::Constants::UNDEFINED_ERROR;
+		}
+		else {
+			# Log the error and return error
+                            logger("error","The subtree for the entry "
+                                   .getValue($entry,"dn")." is $subtree. Can only"
+                                   ." process entries with one of the following"
+                                   ." subtrees: \"ou=people,dc=foss-cloud,dc=org\", \"ou=monitoring,ou=services,dc=foss-cloud,dc=org\"" 
+                                   );
+
+                            # Write the return code from the action 
+                            modifyAttribute( $entry,
+                                             'sstProvisioningReturnValue',
+                                             Provisioning::Monitoring::Zabbix::Constants::UNDEFINED_ERROR,
+                                             connectToBackendServer("connect",1)
+                                           );  
+                            return Provisioning::Monitoring::Zabbix::Constants::UNDEFINED_ERROR;
+		}
+		
+	}
 	
-	# Write the return code from the action 
-	  modifyAttribute( $entry,
-					   'sstProvisioningReturnValue',
-					   "add",
-					   $write_connection
-					 );  
-
-	  # Disconnect from the backend
-	  disconnectFromServer($write_connection);
-
-	  return $return_value;
 	
 
   # Do your stuff here ...
@@ -280,6 +316,124 @@ sub getInfoOS {
 	
 	
 }
+
+###
+
+#####
+# Check if sstIsActive is set on true in ldap
+
+sub monitoringIsActive {
+	my $subtree = "ou=configuration,ou=monitoring,ou=services,dc=foss-cloud,dc=org";
+	my $filter = "(ou=prov-monitoring-zabbix)";
+	
+	my @results = simpleSearch( $subtree, $filter, "sub");
+	
+	if ( @results != 1 )
+	{
+		my $errCode = Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS; 
+		logger("error","Multiple results after ldap search! Error: $errCode .");
+		return Provisioning::Monitoring::Zabbix::Constants::FALSE;
+		
+	} else {
+		return Provisioning::Monitoring::Zabbix::Constants::FALSE unless getValue($results[0], "sstIsActive") eq "TRUE";
+		return Provisioning::Monitoring::Zabbix::Constants::TRUE;
+	}
+	
+}
+
+#####
+# Get Zabbix jsonrpc url
+# Returns url or False, if sstIsActive = False
+
+sub getRpcUrl {
+	my $subtree = "ou=configuration,ou=monitoring,ou=services,dc=foss-cloud,dc=org";
+	my $filter = "(ou=prov-monitoring-zabbix)";
+	
+	my @results = simpleSearch( $subtree, $filter, "sub");
+	if ( @results != 1 )
+	{
+		my $errCode = Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS; 
+		logger("error","Multiple results after ldap search! Error: $errCode .");
+		return Provisioning::Monitoring::Zabbix::Constants::FALSE;
+		
+	} elsif ( getValue($results[0], "sstIsActive") ne "TRUE") {			# If sstIsActive = false, then return FALSE.
+		return Provisioning::Monitoring::Zabbix::Constants::FALSE;
+	
+	} else {
+		return getValue($results[0], "sstWebsiteURL");
+	}
+	
+}
+
+#####
+# Handle modification in the "people" subtree
+
+sub peopleModificationHandler {
+	my ( $entry, $state ) = @_;	
+	
+	# $state must be "adding", "modifying" or "deleting" otherwise something went wrong
+	switch ( $state )
+	{
+	case "adding" {
+				
+					my $uid = getValue($entry, "User Name");
+
+					print "uid = $uid\n";
+					my $name = getValue($entry, "givenName");
+
+					print "$name \n";
+					my $password = getValue($entry, "Password");
+
+					print "$password \n";
+					my $usergroupID = 0;
+					
+					my $subtree = "uid=$uid,ou=people,dc=foss-cloud,dc=org";
+					my $filter = "(sstRole=Monitoring Administrator)";
+	
+					my @results = simpleSearch( $subtree, $filter, "sub");
+					
+					if ( @results != 1 )
+					{
+						logger("error","Multiple results after ldap search!");
+						return Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS;
+						
+					} else {
+						my $usergroupName = getValue($results[0], "sstRole");
+						if(existNameUsergroup($usergroupName) eq "false") {
+							return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createUsergroup($usergroupName) != 0;
+						}
+						$usergroupID = getUsergroupID($usergroupName);
+						if($usergroupID == 0) {
+							logger("error", "Did not get a usergroup ID from the Zabbix modules.");
+							return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE;
+						}
+					}
+					
+					return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createUser($uid, $name, $password, $usergroupID) != 0;
+				}
+	case "modifying" {
+					logger("error", "Modifying a user is not implemented yet.");
+					return Provisioning::Monitoring::Zabbix::Constants::UNDEFINED_ERROR;
+						
+					}
+	case "deleting" {
+					my $uid = getValue($entry, "User Name");
+					return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless deleteUser($uid) != 0;
+					}	
+	else            {
+                            # Log the error and return error
+                            logger("error","The state is $state. But can only"
+                                   ." process entries with one of the following"
+                                   ." states: \"adding\", \"modifying\", " 
+                                   ."\"deleting\"");
+
+                            return Provisioning::Monitoring::Zabbix::Constants::WRONG_STATE_INFORMATION;
+                            
+                    }
+	}	
+	return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE;
+}
+#___End peopleModificationHandler sub
 
 
 

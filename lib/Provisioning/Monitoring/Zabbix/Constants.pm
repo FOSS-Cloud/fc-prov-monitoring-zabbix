@@ -67,7 +67,7 @@ use constant FALSE                                  => 0;
 ### Error codes constants
 use constant UNDEFINED_ERROR                            => 1; # Always the first!
 use constant MISSING_PARAMETER_IN_CONFIG_FILE           => 2;
-use constant CONFIGURED_RAM_DISK_IS_NOT_VALUD           => 3;
+use constant GOT_ZERO_RETURN_FROM_ZABBIX_MODULE         => 3;
 use constant NOT_ENOUGH_SPACE_ON_RAM_DISK               => 4;
 use constant CANNOT_SAVE_MACHINE_STATE                  => 5;
 use constant MULTIPLE_RESULTS				            => 6;
