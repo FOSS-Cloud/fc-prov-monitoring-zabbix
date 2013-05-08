@@ -44,6 +44,8 @@ BEGIN {
 	# functions and variables which are exported by default
 	our @EXPORT = qw(login logout);
 	
+	our %EXPORT_TAGS = ( 'all' => [ qw(login logout) ] );
+	
 	# functions and variables which can be optionally exported
 	our @EXPORT_OK = qw(getAuthID);
 	
@@ -122,11 +124,11 @@ This method returns the authentication ID, if there has been a login in this ses
 	    $response = $client->call($url, $json);
 	    
 	    # Check if response was successful
-	    if($response->content->{'result'}) {
+	    if(defined($response)) {
 	    	$authID = $response->content->{'result'};
 	    	logger("info", "Login successful.");
 	    	} else {
-	    		$authID = 0;
+	    		$authID = "0";
 	    		logger("error", "Authentication failed, did not receive an authentication id from the Zabbix Server.");
 	    		}
 	    
@@ -153,10 +155,10 @@ This method returns the authentication ID, if there has been a login in this ses
 	    
 	    # Check if response was successful
 	    if($response->content->{'result'}) {
-	    	$authID = 1;
+	    	$authID = "1";
 	    	logger("info", "Logout successful.");
 	    	} else {
-	    		$authID = 0;
+	    		$authID = "0";
 	    		logger("error", "Logout failed, did not receive a response from the Zabbix Server.");
 	    		}	
 	    

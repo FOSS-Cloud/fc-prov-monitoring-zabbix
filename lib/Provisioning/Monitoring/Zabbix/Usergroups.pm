@@ -42,10 +42,10 @@ BEGIN {
 	# inherit from Exporter to export functions and variables
 	our @ISA = qw(Exporter);
 	
-	our %EXPORT_TAGS = ( 'all' => [ qw(initUsergroups createUsergroup getUsergroupID deleteUsergroup existNameUsergroup) ] );
+	our %EXPORT_TAGS = ( 'all' => [ qw(initUsergroups createUsergroup getUsergroupID deleteUsergroup existNameUsergroup addUserToUsergroup) ] );
 	
 	# functions and variables which are exported by default
-	our @EXPORT = qw(initUsergroups createUsergroup getUsergroupID deleteUsergroup existNameUsergroup);
+	our @EXPORT = qw(initUsergroups createUsergroup getUsergroupID deleteUsergroup existNameUsergroup addUserToUsergroup);
 	
 	# functions and variables which can be optionally exported
 	our @EXPORT_OK = qw();
@@ -128,7 +128,7 @@ Returns all usergroup properties with a given ID. Or '0' on failure.
 	sub createUsergroup {
 		my ($name) = @_;
 		
-		if(!existNameUsergroup($name))
+		if(existNameUsergroup($name) eq "false")
 		{
 			my $response;
 			my $json = {
@@ -167,7 +167,7 @@ Returns all usergroup properties with a given ID. Or '0' on failure.
 	sub deleteUsergroup {
 		my ($name) = @_;
 		
-		if(existNameUsergroup($name))
+		if(existNameUsergroup($name) eq "true")
 		{
 			
 			my $id = getUsergroupID($name);
@@ -284,6 +284,40 @@ Returns all usergroup properties with a given ID. Or '0' on failure.
 					return 0;
 					}	
 		}
+		
+		###############
+	# Zabbix API add User to a Usergroup
+	#
+	
+	sub addUserToUsergroup {
+		my ($userID, $usergroupID) = @_;
+		
+		
+		my $response;
+		my $json = {
+			jsonrpc => $jsonRPC,
+			method => "usergroup.massadd",
+			params => {
+				usrgrpids => [
+					$usergroupID
+				],
+				userids => [
+					$userID
+				] 
+				},
+				auth => $authID,
+				id => 1
+			};
+		$response = $client->call($zabbixApiURL, $json);
+
+		# Check if response was successful	
+		if(defined($response->content->{'result'})) {
+				return $response->content->{'result'}->{'usrgrpids'}[0];
+				} else {
+					logger("error","Add User to Usergroup failed.");
+					return 0;
+					}
+	}
 	
 
 
@@ -300,6 +334,8 @@ Created 2013 by Stijn Van Paesschen <stijn.van.paesschen@student.groept.be>
 =over
 
 =item 2013-04-23 Stijn Van Paesschen created.
+
+=item 2013-05-07 Stijn Van Paesschen modified.
 
 =back
 

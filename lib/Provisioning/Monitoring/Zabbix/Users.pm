@@ -227,7 +227,7 @@ Returns all user properties with a given ID. Or '0' on failure.
 		$response = $client->call($zabbixApiURL, $json);
 		
 		# Check if response was successful
-		if($response->content->{'result'}) {
+		if(defined($response->content->{'result'})) {
 				return $response->content->{'result'}[0]->{'userid'};
 				} else {
 					logger("error","Get User id failed.");

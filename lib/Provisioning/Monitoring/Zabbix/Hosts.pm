@@ -41,6 +41,8 @@ BEGIN {
 	# inherit from Exporter to export functions and variables
 	our @ISA = qw(Exporter);
 	
+	our %EXPORT_TAGS = ( 'all' => [ qw(initHosts getHosts getHostID createHost createHostByTemplate deleteHost setStatusHost unlinkTemplatesHost getHostgroupsOfHost addHostToHostgroup removeHostFromHostgroup linkTemplateHost) ] );
+	
 	# functions and variables which are exported by default
 	our @EXPORT = qw(initHosts getHosts getHostID createHost createHostByTemplate deleteHost setStatusHost unlinkTemplatesHost getHostgroupsOfHost addHostToHostgroup removeHostFromHostgroup linkTemplateHost);
 	
@@ -91,6 +93,7 @@ This method needs to be called before using any other method in the module, it's
     my $jsonRPC;
     my $authID;
     my $zabbixApiURL;
+    my $defaultPort = "10050";
     my $defaultInterface = [
 			{
 				type => 1,
@@ -98,7 +101,7 @@ This method needs to be called before using any other method in the module, it's
 				useip => 1,
 				ip => "127.0.0.1",
 				dns => "",
-				port => "10050"
+				port => $defaultPort
 			}
 		];
 
@@ -226,16 +229,31 @@ Create a new host by a given name and add it to a hostgroup.
 
 =cut
 		
-		my ($hostName, $hostGroupID) = @_;
+		my ($hostName, $hostGroupID, $ip, $fqdn, $port) = @_;
 		
-		if(!existNameHost($hostName)) {
+		$port = $defaultPort unless (defined($port) && ($port ne ""));
+		
+		if(existNameHost($hostName) eq "false") {
+			my $useip = 0;
+			$useip = 1 unless $ip eq "";
+			my $interface = [
+				{
+					type => 1,
+					main => 1,
+					useip => $useip,
+					ip => $ip,
+					dns => $fqdn,
+					port => $port
+				}
+			];
+			
 			my $response; 
 			my $json = {
 				jsonrpc => $jsonRPC,
 				method => "host.create",
 				params => { 
 					host => $hostName,
-					interfaces => $defaultInterface,
+					interfaces => $interface,
 					groups => [
 						{ 
 							groupid => $hostGroupID
@@ -249,7 +267,7 @@ Create a new host by a given name and add it to a hostgroup.
 			$response = $client->call($zabbixApiURL, $json);
 			
 			# Check if response was successful	
-			if($response->content->{'result'}) {
+			if(defined($response->content->{'result'})) {
 				return $response->content->{'result'};
 				} else {
 					logger("error","Create Host failed.");
@@ -280,26 +298,31 @@ Create a new host by a given name using an existing zabbix template and add it t
 
 =cut
 		
-		my ($hostName, $hostGroupID, $templateID) = @_;
+		my ($hostName, $hostGroupID, $templateID, $ip, $fqdn, $port) = @_;
 		
-		if(!existNameHost($hostName)) {
+		$port = $defaultPort unless (defined($port) && ($port ne ""));
+		
+		if(existNameHost($hostName) eq "false") {
 			my $response;
+			my $useip = 0;
+			$useip = 1 unless $ip eq "";
 			my $interface = [
 				{
 					type => 1,
 					main => 1,
-					useip => 1,
-					ip => "127.0.0.1",
-					dns => "",
-					port => "10050"
+					useip => $useip,
+					ip => $ip,
+					dns => $fqdn,
+					port => $port
 				}
-			]; 
+			];
+			
 			my $json = {
 				jsonrpc => $jsonRPC,
 				method => "host.create",
 				params => { 
 					host => $hostName,
-					interfaces => $defaultInterface,
+					interfaces => $interface,
 					groups => [
 						{ 
 							groupid => $hostGroupID
@@ -318,7 +341,7 @@ Create a new host by a given name using an existing zabbix template and add it t
 			$response = $client->call($zabbixApiURL, $json);
 			
 			# Check if response was successful	
-			if($response->content->{'result'}) {
+			if(defined($response->content->{'result'})) {
 				return $response->content->{'result'};
 				} else {
 					logger("error","Create Host by template failed.");
@@ -689,6 +712,8 @@ Created 2013 by Stijn Van Paesschen <stijn.van.paesschen@student.groept.be>
 =item 2013-02 Stijn Van Paesschen created.
 
 =item 2013-04-6 Stijn Van Paesschen modified.
+
+=item 2013-05-8 Stijn Van Paesschen modified.
 
 Added the POD2text documentation.
 

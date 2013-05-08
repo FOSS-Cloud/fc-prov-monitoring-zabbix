@@ -41,6 +41,8 @@ BEGIN {
 	# inherit from Exporter to export functions and variables
 	our @ISA = qw(Exporter);
 	
+	our %EXPORT_TAGS = ( 'all' => [ qw(initTemplates getTemplateID listTemplates) ] );
+	
 	# functions and variables which are exported by default
 	our @EXPORT = qw(initTemplates getTemplateID listTemplates);
 	
@@ -140,7 +142,7 @@ Returns all templates that exist on the Zabbix server.
 		$response = $client->call($zabbixApiURL, $json);
 		
 		# Check if response was successful	
-		if($response->content->{'result'}) {
+		if(defined($response->content->{'result'})) {
 				return $response->content->{'result'}[0]->{'templateid'};
 				} else {
 					logger("error","Get Template failed.");

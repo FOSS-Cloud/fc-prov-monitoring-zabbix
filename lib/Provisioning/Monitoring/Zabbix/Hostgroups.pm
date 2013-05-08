@@ -41,11 +41,13 @@ BEGIN {
 	# inherit from Exporter to export functions and variables
 	our @ISA = qw(Exporter);
 	
+	our %EXPORT_TAGS = ( 'all' => [ qw(initHostgroups createHostGroup getHostGroupID deleteHostGroup listHostgroups existNameHostGroup) ] );
+	
 	# functions and variables which are exported by default
-	our @EXPORT = qw(initHostgroups createHostGroup getHostGroupID deleteHostGroup listHostgroups);
+	our @EXPORT = qw(initHostgroups createHostGroup getHostGroupID deleteHostGroup listHostgroups existNameHostGroup);
 	
 	# functions and variables which can be optionally exported
-	our @EXPORT_OK = qw(existNameHostGroup existIDHostGroup);
+	our @EXPORT_OK = qw(existIDHostGroup);
 	
 	}
 
@@ -133,7 +135,7 @@ Returns all hostgroups that exist on the Zabbix server or '0' on failure.
 	sub createHostGroup {
 		my ($name) = @_;
 		
-		if(!existNameHostGroup($name))
+		if(existNameHostGroup($name) eq "false")
 		{
 			my $response;
 			my $json = {
@@ -172,7 +174,7 @@ Returns all hostgroups that exist on the Zabbix server or '0' on failure.
 	sub deleteHostGroup {
 		my ($id) = @_;
 		
-		if(existIDHostGroup($id))
+		if(existIDHostGroup($id) eq "true")
 		{
 			
 			my $response;

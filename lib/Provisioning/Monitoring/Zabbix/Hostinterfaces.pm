@@ -41,6 +41,8 @@ BEGIN {
 	# inherit from Exporter to export functions and variables
 	our @ISA = qw(Exporter);
 	
+	our %EXPORT_TAGS = ( 'all' => [ qw(initHostinterfaces getHostInterface) ] );
+	
 	# functions and variables which are exported by default
 	our @EXPORT = qw(initHostinterfaces getHostInterface);
 	
