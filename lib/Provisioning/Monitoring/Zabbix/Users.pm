@@ -42,10 +42,10 @@ BEGIN {
 	# inherit from Exporter to export functions and variables
 	our @ISA = qw(Exporter);
 	
-	our %EXPORT_TAGS = ( 'all' => [ qw(initUsers createUser getUserID deleteUser listUsers) ] );
+	our %EXPORT_TAGS = ( 'all' => [ qw(initUsers createUser getUserID deleteUser listUsers readableAliasUser) ] );
 	
 	# functions and variables which are exported by default
-	our @EXPORT = qw(initUsers createUser getUserID deleteUser listUsers);
+	our @EXPORT = qw(initUsers createUser getUserID deleteUser listUsers readableAliasUser);
 	
 	# functions and variables which can be optionally exported
 	our @EXPORT_OK = qw();
@@ -256,7 +256,7 @@ Returns all user properties with a given ID. Or '0' on failure.
 		$response = $client->call($zabbixApiURL, $json);	
 		
 		# Check if response was successful
-		if($response->content->{'result'}) {
+		if(defined($response->content->{'result'})) {
 				return $response->content->{'result'};  # true or false
 				} else {
 					logger("error","User doesn't exist!");

@@ -41,13 +41,13 @@ BEGIN {
 	# inherit from Exporter to export functions and variables
 	our @ISA = qw(Exporter);
 	
-	our %EXPORT_TAGS = ( 'all' => [ qw(initHosts getHosts getHostID createHost createHostByTemplate deleteHost setStatusHost unlinkTemplatesHost getHostgroupsOfHost addHostToHostgroup removeHostFromHostgroup linkTemplateHost) ] );
+	our %EXPORT_TAGS = ( 'all' => [ qw(initHosts getHosts getHostID createHost createHostByTemplate deleteHost setStatusHost unlinkTemplatesHost getHostgroupsOfHost addHostToHostgroup removeHostFromHostgroup linkTemplateHost existNameHost) ] );
 	
 	# functions and variables which are exported by default
-	our @EXPORT = qw(initHosts getHosts getHostID createHost createHostByTemplate deleteHost setStatusHost unlinkTemplatesHost getHostgroupsOfHost addHostToHostgroup removeHostFromHostgroup linkTemplateHost);
+	our @EXPORT = qw(initHosts getHosts getHostID createHost createHostByTemplate deleteHost setStatusHost unlinkTemplatesHost getHostgroupsOfHost addHostToHostgroup removeHostFromHostgroup linkTemplateHost existNameHost);
 	
 	# functions and variables which can be optionally exported
-	our @EXPORT_OK = qw(existNameHost);
+	our @EXPORT_OK = qw();
 	
 	}
 
@@ -268,7 +268,7 @@ Create a new host by a given name and add it to a hostgroup.
 			
 			# Check if response was successful	
 			if(defined($response->content->{'result'})) {
-				return $response->content->{'result'};
+				return $response->content->{'result'}->{'hostids'}[0];
 				} else {
 					logger("error","Create Host failed.");
 					return 0;
@@ -342,7 +342,7 @@ Create a new host by a given name using an existing zabbix template and add it t
 			
 			# Check if response was successful	
 			if(defined($response->content->{'result'})) {
-				return $response->content->{'result'};
+				return $response->content->{'result'}->{'hostids'}[0];
 				} else {
 					logger("error","Create Host by template failed.");
 					return 0;
@@ -364,7 +364,7 @@ Create a new host by a given name using an existing zabbix template and add it t
 
 =over
 
-=item deleteHost($hostID)
+=item deleteHost($hostName)
 
 Delete host by hostID.
 
@@ -372,8 +372,9 @@ Delete host by hostID.
 
 =cut
 		
-		my ($hostID) = @_;
+		my ($hostName) = @_;
 		
+		my $hostID = getHostID($hostName);
 		my $response; 
 		my $json = {
 			jsonrpc => $jsonRPC,
@@ -387,7 +388,7 @@ Delete host by hostID.
 		$response = $client->call($zabbixApiURL, $json);
 		
 		# Check if response was successful	
-		if($response->content->{'result'}) {
+		if(defined($response->content->{'result'})) {
 				return $response->content->{'result'};
 				} else {
 					logger("error","Delete Host failed.");
@@ -543,7 +544,7 @@ Set the host on monitored ($status = 0) or not-monitored ($status = 1)
 		$response = $client->call($zabbixApiURL, $json);
 
 		# Check if response was successful	
-		if($response->content->{'result'}) {
+		if(defined($response->content->{'result'})) {
 				return $response->content->{'result'}->{'hostids'}[0];
 				} else {
 					logger("error","Add Host to Hostgroup failed.");
@@ -714,6 +715,8 @@ Created 2013 by Stijn Van Paesschen <stijn.van.paesschen@student.groept.be>
 =item 2013-04-6 Stijn Van Paesschen modified.
 
 =item 2013-05-8 Stijn Van Paesschen modified.
+
+=item 2013-05-10 Stijn Van Paesschen modified.
 
 Added the POD2text documentation.
 

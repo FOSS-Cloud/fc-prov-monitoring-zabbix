@@ -73,6 +73,7 @@ my $apiuser = "4000002";  #TODO: be able to get Zabbix-Api admin out of LDAP
 my $apipassword = "admin";
 my $authID;
 my $jsonRPC = "2.0";
+my @zabbixUsergroups = ("Monitoring Administrator", "Monitoring User"); # List of allowed usergroups on the zabbix server
 
 # get the current service
 my $service = $Provisioning::cfg->val("Global","SERVICE");
@@ -102,7 +103,7 @@ sub processEntry{
   # Check if the LDAP change happened in a subtree that is relevant to the monitoring
   return Provisioning::Monitoring::Zabbix::Constants::MONITORING_NOT_NEEDED unless (checkObjectclass( $entry ) == Provisioning::Monitoring::Zabbix::Constants::TRUE);
   #return Provisioning::Monitoring::Zabbix::Constants::MONITORING_NOT_NEEDED unless (checkMonitoringService( $entry ) == Provisioning::Monitoring::Zabbix::Constants::TRUE);
-      
+     
   # If monitoring is not activated in the ldap, than exit the processEntry().
   return Provisioning::Monitoring::Zabbix::Constants::MONITORING_NOT_ACTIVE unless (monitoringIsActive() == Provisioning::Monitoring::Zabbix::Constants::TRUE);
   
@@ -182,16 +183,16 @@ sub processEntry{
 	# The return value that has to be returned to the backend
 	my $return_value = 0;
 	
-	
-	
 	### Start Zabbix interaction
 	my $subtree = getValue($entry, "dn");
 
 	switch ( $subtree )
 	{
 		case /^.+,ou=people,dc=foss-cloud,dc=org/ {
+			
+			# Handle changes in the ldap in the "people" subtree
 			$return_value = peopleModificationHandler($entry, $state);
-			print "people subtree \n";
+			
 			# Write the return code from the action 
 			modifyAttribute( $entry,
 							   'sstProvisioningReturnValue',
@@ -208,10 +209,9 @@ sub processEntry{
 			# Check if the LDAP change is relevant to the Zabbix monitoring service
 			return Provisioning::Monitoring::Zabbix::Constants::MONITORING_NOT_NEEDED unless (checkMonitoringService( $entry ) == Provisioning::Monitoring::Zabbix::Constants::TRUE);
 
-				print "monitoring subtree \n";
-				my $ent = getValue( $entry, "dn");
-				print "monitoring: $ent \n";
-				return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE unless $state ne "modifying";
+			# If state is modifying, we probably get an entry from the modifyAttribute function, the processEntry can exit to prevent an endless loop. TODO: Solve this problem.
+			return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE unless $state ne "modifying";
+			
 			my $checkReturn;	
 
 			# Write the changes to the backend
@@ -228,14 +228,51 @@ sub processEntry{
 				return Provisioning::Monitoring::Zabbix::Constants::CANNOT_LOCK_MACHINE;
 			}
 			
-			# Check if a service or a unit is added.
+			# Check if ldap change is on a service or a unit (subservice).
 			my @objectclass = getValue($entry, "objectClass"); 
 			if( grep /labeledURIObject$/, @objectclass) {
-				print "This is a unit \n";
-				$return_value = addSubService($entry);
+				
+				switch( $state )
+				{
+					case "adding" {
+									$return_value = addSubService($entry);
+									return Provisioning::Monitoring::Zabbix::Constants::ALREADY_EXIST_ON_ZABBIX unless $return_value != Provisioning::Monitoring::Zabbix::Constants::ALREADY_EXIST_ON_ZABBIX;
+								}
+					case "modifying" {
+									# Not implemented yet
+									return Provisioning::Monitoring::Zabbix::Constants::UNDEFINED_ERROR;
+									}
+					case "deleting" {
+						
+									$return_value = deleteSubService($entry);
+									return Provisioning::Monitoring::Zabbix::Constants::ALREADY_DELETED_ON_ZABBIX unless $return_value != Provisioning::Monitoring::Zabbix::Constants::ALREADY_DELETED_ON_ZABBIX;
+									}	
+					else            {
+									return Provisioning::Monitoring::Zabbix::Constants::WRONG_STATE_INFORMATION;
+									}
+				}
+				
 			} else {
-				print "This is a service \n";
-				$return_value = addService($entry);
+								
+				switch( $state )
+				{
+					case "adding" {
+										$return_value = addService($entry);
+										return Provisioning::Monitoring::Zabbix::Constants::ALREADY_EXIST_ON_ZABBIX unless $return_value != Provisioning::Monitoring::Zabbix::Constants::ALREADY_EXIST_ON_ZABBIX;
+									}
+					case "modifying" {
+									# Not implemented yet
+									return Provisioning::Monitoring::Zabbix::Constants::UNDEFINED_ERROR;
+									}
+					case "deleting" {
+
+									$return_value = deleteService($entry);
+									return Provisioning::Monitoring::Zabbix::Constants::ALREADY_DELETED_ON_ZABBIX unless $return_value != Provisioning::Monitoring::Zabbix::Constants::ALREADY_DELETED_ON_ZABBIX;
+									}	
+					else            {
+									return Provisioning::Monitoring::Zabbix::Constants::WRONG_STATE_INFORMATION;
+									}
+				}
 				
 			}
 
@@ -275,86 +312,277 @@ sub processEntry{
                             # Write the return code from the action 
                             modifyAttribute( $entry,
                                              'sstProvisioningReturnValue',
-                                             Provisioning::Monitoring::Zabbix::Constants::UNDEFINED_ERROR,
+                                             Provisioning::Monitoring::Zabbix::Constants::WRONG_LDAP_SUBTREE,
                                              connectToBackendServer("connect",1)
                                            );  
-                            return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE;
+                            return Provisioning::Monitoring::Zabbix::Constants::WRONG_LDAP_SUBTREE;
 		}
 		
 	}
 	
-	
-
-  # Do your stuff here ...
-
-  # If you want to Log something use the logger(level,message) method from the 
-  # Provisioning::Log module
-
-  # If you want to execute a command on a system use the 
-  # executeCommand(connection,args[]) method from the Provisioning::TransportAPI
-  # ::<API> module (also use this module for connect disconnect etc)
-
-  # Also use the Provisioning::Backend::<Backend> module for everything
-  # concerning the backend (connect disconnect search etc) 
-
+	# Should never come here.
+	return Provisioning::Monitoring::Zabbix::Constants::UNDEFINED_ERROR;
 
 }
 # _____End processEntry sub
 
-##### Zabbix Methods
 
-sub addHost {
+
+
+############################################################
+# ----------------- Main handler methods ----------------- #
+############################################################
+
+#####
+# Handle modification in the "people" subtree
+
+sub peopleModificationHandler {
 	
-	my ($vmID) = @_;
+	my ( $entry, $state ) = @_;
 	
-	my @infoOS = getInfoOS($vmID);
-	my $OSName = $infoOS[0];
-	my $OSType = $infoOS[1];
-	my $OSVersion = $infoOS[2];
-	
-	my $hostgroupName = "$OSName server";
-	my $hostgroupID = getHostGroupID($hostgroupName);
-	if($hostgroupID == 0) {
-		$hostgroupID = getHostGroupID("Discovered hosts");
-	}
-	
-	my $templateName = "Template OS $OSName";
-	my $templateID = getTemplateID($templateName);
-	if($templateID == 0) {
-		return createHost($vmID, $hostgroupID); #Hopefully returns Zabbix Host ID
-	} else {
-		return createHostByTemplate($vmID, $hostgroupID, $templateID); #Hopefully returns Zabbix Host ID
-	}
-	
-	
+	my $usergroupName = getValue($entry, "sstRole");
+
+	return Provisioning::Monitoring::Zabbix::Constants::NO_MONITORING_USER unless ( grep /^$usergroupName$/, @zabbixUsergroups ); # Check if usergroup is relevant to the zabbix monitoring.
+	# $state must be "adding", "modifying" or "deleting" otherwise something went wrong
+	switch ( $state )
+	{
+	case "adding" {
+					my $parent = getParentEntry( $entry );
+
+					my $uid = getValue($parent, "uid");
+					my $name = getValue($parent, "givenName");
+					my $password = getValue($parent, "userPassword");
+					my $usergroupID = 0;					
+					
+					# Create usergroup if it does not exist on the zabbix server
+					if(existNameUsergroup($usergroupName) eq "false") {
+						return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createUsergroup($usergroupName) != 0;
+					}
+					$usergroupID = getUsergroupID($usergroupName);
+					if($usergroupID == 0) {
+						logger("error", "Did not get a usergroup ID from the Zabbix modules.");
+						return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE;
+					}
+					
+					# make sure the user is in the monitoring usergroup, despite if it already exists or not.
+					if(readableAliasUser($uid) eq "true"){
+						return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless addUserToUsergroup(getUserID($uid), $usergroupID) != 0;
+					} else {
+						return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createUser($uid, $name, $password, $usergroupID) != 0;
+					}
+					
+					# Add the user to customer usergroup
+					my $customerEntry = getCustomerInfo(getValue($parent, "sstBelongsToCustomerUID"));
+					$usergroupName = getValue($customerEntry, "uid")." - ".getValue($customerEntry, "o")."";
+					if(existNameUsergroup($usergroupName) eq "false") {
+							return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createUsergroup($usergroupName) != 0;
+						}
+						$usergroupID = getUsergroupID($usergroupName);
+						if($usergroupID == 0) {
+							logger("error", "Did not get a usergroup ID from the Zabbix modules.");
+							return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE;
+						}
+					return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless addUserToUsergroup(getUserID($uid), $usergroupID) != 0;
+					
+				}
+	case "modifying" {
+					logger("error", "Modifying a user is not implemented yet.");
+					return Provisioning::Monitoring::Zabbix::Constants::UNDEFINED_ERROR;
+						
+					}
+	case "deleting" {
+
+					my $parent = getParentEntry( $entry );
+					my $uid = getValue($parent, "uid");
+					return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless deleteUser($uid) != 0;
+					}	
+	else            {
+                            # Log the error and return error
+                            logger("error","The state is $state. But can only"
+                                   ." process entries with one of the following"
+                                   ." states: \"adding\", \"modifying\", " 
+                                   ."\"deleting\"");
+
+                            return Provisioning::Monitoring::Zabbix::Constants::WRONG_STATE_INFORMATION;
+                            
+                    }
+	}	
+	return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE;
 }
+#___End peopleModificationHandler sub
 
-##### Ldap Methods
+#####
+# Add a monitoring service
+sub addService {
+	my ( $entry ) = @_;
+	
+	my $service = getValue($entry, "sstServiceName");
+	my $groupName = getCustomerName( getValue($entry, "sstBelongsToCustomerUID") );
+	
+	#Create service hostgroup, if it does not exist.
+	if(existNameHostGroup($service) eq "false") {
+		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createHostGroup($service) != 0;
+	}
+	
+	#Create customer hostgroup, if it does not exist.
+	if(existNameHostGroup($groupName) eq "false") {
+		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createHostGroup($groupName) != 0;
+	}
+	
+	# Create customer usergroup, if it does not exist.
+	if(existNameUsergroup($groupName) eq "false") {
+		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createUsergroup($groupName) != 0;
+	}
+		
+	return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE;	
+}
+#___End addService sub
 
-sub getInfoOS {
+
+#####
+# Add a monitoring subservice
+sub addSubService {
 	
-	my ( $VirtualMachineID ) = @_;
+	my ( $entry ) = @_;
 	
-	my $subtree = "sstVirtualMachine=$VirtualMachineID,ou=virtual machines,ou=virtualization,ou=services,dc=foss-cloud,dc=org";
-	my $filter = "(ou=operating system)";
+	my $subService = getValue($entry, "sstServiceName");
+	return Provisioning::Monitoring::Zabbix::Constants::UNEXPECTED_LDAP_VALUE unless $subService eq "plus Monitoring Unit [per Unit]";
+	my $labeledURI;
+	my $parent = getParentEntry( $entry );
+		
+	# get ldap entry of unit
+	my $member = getValue($entry, "member");
+	if(defined($member)){
+		$labeledURI = "ldap:///".$member."";
+	} else {
+		$labeledURI = getValue($entry, "labeledURI");
+	}
 	
-	my @results = simpleSearch( $subtree, $filter, "sub");
+	my $vmEntry = getVMEntry($labeledURI);
+		
+	# Generate unit hostname, as it should be used on the Zabbix server.
+	my $vmName = getHostName($vmEntry); 
 	
-	if ( @results != 1 )
+	# Check if unit exists on the zabbix server. 
+	return Provisioning::Monitoring::Zabbix::Constants::ALREADY_EXIST_ON_ZABBIX unless existNameHost($vmName) eq "false";
+	
+	# Check if service (parent) is already provisioned, if not create it. (i.e. call the addService function again with the parent Entry)
+	my $return_value = addService( $parent );
+	return $return_value unless $return_value == 0;
+	
+	# Get customer hostgroup ID
+	my $customerID = getValue($parent, "sstBelongsToCustomerUID");
+	my $zabbixHostgroupID = getHostGroupID( getCustomerName($customerID) );
+	
+	# Generate template name, as it should be used on the Zabbix server.
+	my @osResults = simpleSearch( getValue($vmEntry, "dn"), "(ou=operating system)", "sub");
+	if ( @osResults != 1 )
 	{
 		logger("error","Multiple results after ldap search!");
-		#return Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS;
-		return -1;
-		
+		return Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS;
+	} 
+	my $templateName = "Template_".getValue($osResults[0], "sstOperatingSystem");
+	my $zabbixTemplateID = getTemplateID($templateName);
+	my $zabbixHostID;
+	my $hostIP = "";
+	
+	if($zabbixTemplateID == 0){
+		$zabbixHostID = createHost($vmName, $zabbixHostgroupID, $hostIP, $vmName);
+		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless $zabbixHostID != 0;
 	} else {
-		my @OSinfo = (getValue($results[0], "sstOperatingSystem"), getValue($results[0], "sstOperatingSystemType"), getValue($results[0], "sstOperatingSystemVersion")); #E.g. (Linux, Fedora, 18) or (Windows, undef, 2008 R2)
-		return @OSinfo;
+		$zabbixHostID = createHostByTemplate($vmName, $zabbixHostgroupID, $zabbixTemplateID, $hostIP, $vmName);
+		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless $zabbixHostID != 0;
 	}
 	
+	# Add host to service hostgroup
+	return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless addHostToHostgroup($zabbixHostID, getHostGroupID( getValue($parent, "sstServiceName") )) != 0;
+
+	return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE;
 	
 }
+#___End addSubService sub
 
-###
+#####
+# Delete a monitoring unit
+sub deleteSubService {
+	
+	my ( $entry ) = @_;
+
+	my $dn = getValue( $entry, "dn");
+	my ($filter, $subtree) = split(/,/, $dn, 2);
+	my @unitEntry = simpleSearch( $subtree, $filter, "sub");
+	if ( @unitEntry != 1 )
+	{
+		logger("error","Multiple results after ldap search!");
+		return Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS;
+	} 
+	
+	# Check if it is part of the zabbix monitoring service.
+	return Provisioning::Monitoring::Zabbix::Constants::MONITORING_NOT_NEEDED unless checkMonitoringService($unitEntry[0]) ==  Provisioning::Monitoring::Zabbix::Constants::TRUE;
+		
+	my $labeledURI = getValue($unitEntry[0], "labeledURI");
+	my $vmEntry = getVMEntry($labeledURI);
+	my $hostName = getHostName($vmEntry);
+	
+	# Check if the host still exists on the zabbix server, else it is already deleted.
+	return Provisioning::Monitoring::Zabbix::Constants::ALREADY_DELETED_ON_ZABBIX unless existNameHost($hostName) eq "true";
+	
+	# Delete the host on the zabbix server.
+	return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless deleteHost($hostName) != 0;
+	
+	return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE;
+}
+#___End deleteSubService sub
+
+#####
+# Delete a monitoring service
+sub deleteService {
+	
+	my ( $entry ) = @_;
+	
+	# Get the service entry
+	my $dn = getValue($entry, "dn");
+	my ($filter, $subtree) = split(/,/, $dn, 2);
+	my @serviceEntry = simpleSearch( $subtree, $filter, "sub");
+	if ( @serviceEntry != 1 )
+	{
+		logger("error","Multiple results after ldap search!");
+		return Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS;
+	}
+	
+	# Check if it is part of the zabbix monitoring service.
+	return Provisioning::Monitoring::Zabbix::Constants::MONITORING_NOT_NEEDED unless checkMonitoringService($serviceEntry[0]) ==  Provisioning::Monitoring::Zabbix::Constants::TRUE;
+	
+	# Get the service and groupname as it should be on the Zabbix server.
+	my $service = getValue($serviceEntry[0], "sstServiceName");
+	my $groupName = getCustomerName( getValue($serviceEntry[0], "sstBelongsToCustomerUID") );
+	
+	# Delete service hostgroup, if it exist.
+	if(existNameHostGroup($service) eq "true") {
+		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless deleteHostGroup($service) != 0;
+	}
+	
+	# Delete customer hostgroup, if it exist.
+	if(existNameHostGroup($groupName) eq "true") {
+		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless deleteHostGroup($groupName) != 0;
+	}
+	
+	# Delete customer usergroup, if it exist.
+	if(existNameUsergroup($groupName) eq "true") {
+		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless deleteUsergroup($groupName) != 0;
+	}
+		
+	return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE;	
+	
+}
+#___End deleteService sub
+
+
+
+
+############################################################
+# ----------------- LDAP and INFO methods ---------------- #
+############################################################	
 
 #####
 # Check if sstIsActive is set on true in ldap
@@ -367,9 +595,8 @@ sub monitoringIsActive {
 	
 	if ( @results != 1 )
 	{
-		my $errCode = Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS; 
-		logger("error","Multiple results after ldap search! Error: $errCode .");
-		return Provisioning::Monitoring::Zabbix::Constants::FALSE;
+		logger("error","Multiple results after ldap search!");
+		return Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS; ;
 		
 	} else {
 		return Provisioning::Monitoring::Zabbix::Constants::FALSE unless getValue($results[0], "sstIsActive") eq "TRUE";
@@ -386,6 +613,28 @@ sub checkObjectclass {
 	
 	my @objectclass = getValue($entry, "objectClass"); 
 	
+	# If the @objectclass is not defined, this probably means an entry is deleted.
+	if(! defined($objectclass[0])) {
+		my $dn = getValue($entry, "dn");
+		my ($filter, $subtree) = split(/,/, $dn, 2);
+		my @results = simpleSearch( $subtree, $filter, "sub");
+	
+		if ( @results != 1 )
+		{
+			logger("error","Multiple results after ldap search!");
+			return Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS; ;
+		} 
+		
+		@objectclass = getValue($results[0], "objectClass");
+	}
+	
+	# If the @objectclass is still not defined, we have a problem.
+	if(! defined($objectclass[0])) {
+		logger("error", "The entry does not have an objectClass!");
+		return Provisioning::Monitoring::Zabbix::Constants::UNDEFINED_ERROR;
+	}
+
+	# Check if the objectclass is 'sstRoles' or 'sstProvisioning' (monitoring relevant)
 	if( grep /sstRoles$/, @objectclass) {
 		return Provisioning::Monitoring::Zabbix::Constants::TRUE;
 	} elsif ( grep /sstProvisioning$/, @objectclass ) {
@@ -430,166 +679,62 @@ sub getRpcUrl {
 	
 }
 
+
 #####
-# Handle modification in the "people" subtree
-
-sub peopleModificationHandler {
+# Get customer LDAP entry
+sub getCustomerInfo {
+	my ($customerID) = @_;
 	
-	my ( $entry, $state ) = @_;	
-
-	# $state must be "adding", "modifying" or "deleting" otherwise something went wrong
-	switch ( $state )
+	my $subtree = "ou=customers,dc=foss-cloud,dc=org";
+	my $filter = "(uid=$customerID)";
+	
+	my @custEntry = simpleSearch( $subtree, $filter, "sub");
+	if ( @custEntry != 1 )
 	{
-	case "adding" {
-					my $parent = getParentEntry( $entry );
-
-					my $uid = getValue($parent, "uid");
-					my $name = getValue($parent, "givenName");
-					my $password = getValue($parent, "userPassword");
-					my $usergroupID = 0;
-					
-					# Check if there is a usergroup for the Zabbix Server
-					# The two possibilities are: 'Monitoring Administrator' or 'User'					
-					my $subtree = "uid=$uid,ou=people,dc=foss-cloud,dc=org";
-					my $filter = "(sstRole=Monitoring Administrator)";
-					my @results = simpleSearch( $subtree, $filter, "sub");
-					my $usergroupName = getValue($entry, "sstRole");
-					
-					if ( $usergroupName eq "Monitoring Administrator" )
-					{
-						if(existNameUsergroup($usergroupName) eq "false") {
-							return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createUsergroup($usergroupName) != 0;
-						}
-						$usergroupID = getUsergroupID($usergroupName);
-						if($usergroupID == 0) {
-							logger("error", "Did not get a usergroup ID from the Zabbix modules.");
-							return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE;
-						}
-					} elsif ( $usergroupName eq "Monitoring User" ) {
-							if(existNameUsergroup($usergroupName) eq "false") {
-								return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createUsergroup($usergroupName) != 0;
-							}
-							$usergroupID = getUsergroupID($usergroupName);
-							if($usergroupID == 0) {
-								logger("error", "Did not get a usergroup ID from the Zabbix modules.");
-								return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE;
-							}
-						} else {
-							    logger("info", "Monitoring user should be Monitoring Administrator or User .");
-								return Provisioning::Monitoring::Zabbix::Constants::NO_MONITORING_USER;
-						}
-					return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createUser($uid, $name, $password, $usergroupID) != 0;
-				}
-	case "modifying" {
-					logger("error", "Modifying a user is not implemented yet.");
-					return Provisioning::Monitoring::Zabbix::Constants::UNDEFINED_ERROR;
-						
-					}
-	case "deleting" {
-					my $parent = getParentEntry( $entry );
-					my $uid = getValue($parent, "uid");
-					return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless deleteUser($uid) != 0;
-					}	
-	else            {
-                            # Log the error and return error
-                            logger("error","The state is $state. But can only"
-                                   ." process entries with one of the following"
-                                   ." states: \"adding\", \"modifying\", " 
-                                   ."\"deleting\"");
-
-                            return Provisioning::Monitoring::Zabbix::Constants::WRONG_STATE_INFORMATION;
-                            
-                    }
-	}	
-	return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE;
-}
-#___End peopleModificationHandler sub
-
-#####
-# Add a monitoring service
-sub addService {
-	my ( $entry ) = @_;
-	
-	
-	my $service = getValue($entry, "sstServiceName");
-	my $customerID = getValue($entry, "sstBelongsToCustomerUID");
-	print "service = $service \n";
-	#Create Hostgroup if it does not exist.
-	my $zabbixHostgroupID = createHostGroup($service);
-	return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless $zabbixHostgroupID != 0;
-	
-	#Create Usergroup if it does not exist.
-	my $zabbixUsergroupID = createUsergroup($service);
-	return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless $zabbixUsergroupID != 0;
-	
-	#Add every user to the usergroup.
-	# my @results = simpleSearch("ou=people,dc=foss-cloud,dc=org", "(&(sstBelongsToCustomerUID=$customerID)(|(sstRole=Monitoring Administrator)(sstRole=Monitoring User)))", "sub");
-	my @results = simpleSearch("ou=people,dc=foss-cloud,dc=org", "(sstBelongsToCustomerUID=$customerID)", "sub");
-	print "simpleSearch people results: @results \n";
-	foreach my $obj (@results) {
-		my $personUID = getValue($obj, "uid");
-		print "personUID = $personUID \n";
-		my $zabbixUserID = getUserID( $personUID );
-		print "zabbixUserID = $zabbixUserID \n";
-		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless $zabbixUserID != 0;
-		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless addUserToUsergroup($zabbixUserID, $zabbixUsergroupID) != 0;
+		logger("error","Multiple results after ldap search!");
+		return Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS;
 	}
-	print "Succes addService \n";
-	return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE;	
+	
+	return $custEntry[0];
 }
-#___End addService sub
-
 
 #####
-# Add a monitoring subservice
-sub addSubService {
+# Get customer name
+sub getCustomerName {
+	my ( $customerID ) = @_;
+	
+	my $customerEntry = getCustomerInfo($customerID);
+	
+	return getValue($customerEntry, "uid")." - ".getValue($customerEntry, "o")."";
+}
+
+#####
+# Generate Hostname as it should be used on the Zabbix server
+sub getHostName {
 	my ( $entry ) = @_;
 	
-	my $subService = getValue($entry, "sstServiceName");
-	return Provisioning::Monitoring::Zabbix::Constants::UNEXPECTED_LDAP_VALUE unless $subService eq "plus Monitoring Unit [per Unit]";
-	my $labeledURI = getValue($entry, "labeledURI");
-		
-	#Create Hostgroup if it does not exist, if it exist get the ID.
-	my $parentService = getValue(getParentEntry( $entry ), "sstServiceName");
-	my $zabbixHostgroupID = createHostGroup($parentService);
-	return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless $zabbixHostgroupID != 0;
+	# Generate unit hostname, as it should be used on the Zabbix server.
+	return getValue($entry, "sstNetworkHostname").".".getValue($entry, "sstNetworkDomainName"); 	
+}
+#____End getHostName
+
+#####
+# Get the virtual machine entry in the ldap that is in the labeledURI
+sub getVMEntry {
 	
-	# Check if the labeled URI resulted in an attribute 'member'
-	my $member = getValue($entry, "member");
-	my $ldap;
-	($ldap, $member) = split(/\/\/\//, $labeledURI, 2) unless defined($member); # Get dn out of labeledURI and put it in $member, unless 'member' is present as an attribute.
-	my ($unit, $subtree) = split(/,/, $member, 2);
+	my ( $labeledURI ) = @_;
 	
-	my @unitResults = simpleSearch( $subtree, $unit, "sub");
+	my ($ldap, $dn) = split(/\/\/\//, $labeledURI, 2); 
+	my ($filter, $subtree) = split(/,/, $dn, 2);
+	my @unitResults = simpleSearch( $subtree, $filter, "sub");
 	if ( @unitResults != 1 )
 	{
 		logger("error","Multiple results after ldap search!");
-		return Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS;
-	} 
-	
-	# Generate virtual machine hostname, as it should be used on the Zabbix server.
-	my $vmName = getValue($unitResults[0], "sstNetworkHostname").".".getValue($unitResults[0], "sstNetworkDomainName"); 
-	
-	my @osResults = simpleSearch( $member, "(ou=operating system)", "sub");
-	if ( @osResults != 1 )
-	{
-		logger("error","Multiple results after ldap search!");
-		return Provisioning::Monitoring::Zabbix::Constants::MULTIPLE_RESULTS;
-	} 
-	my $templateName = "Template_".getValue($osResults[0], "sstOperatingSystem");
-	my $zabbixTemplateID = getTemplateID($templateName);
-	
-	
-	if($zabbixTemplateID == 0){
-		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createHost($vmName, $zabbixHostgroupID, "", $vmName) != 0;
-	} else {
-		return Provisioning::Monitoring::Zabbix::Constants::GOT_ZERO_RETURN_FROM_ZABBIX_MODULE unless createHostByTemplate($vmName, $zabbixHostgroupID, $zabbixTemplateID, "", $vmName) != 0;
 	}
-		
-	return Provisioning::Monitoring::Zabbix::Constants::SUCCESS_CODE;
 	
+	return $unitResults[0];
 }
-#___End addSubService sub
+#___End getVMEntry sub
 
 1;
 
@@ -610,6 +755,10 @@ Created 2013 by Stijn Van Paesschen <stijn.van.paesschen@student.groept.be>
 =item 2013-05-07 Stijn Van Paesschen modified.
 
 =item 2013-05-08 Stijn Van Paesschen modified.
+
+=item 2013-05-09 Stijn Van Paesschen modified.
+
+=item 2013-05-10 Stijn Van Paesschen modified.
 
 Added the POD2text documentation.
 

@@ -172,11 +172,11 @@ Returns all hostgroups that exist on the Zabbix server or '0' on failure.
 	#
 
 	sub deleteHostGroup {
-		my ($id) = @_;
+		my ($name) = @_;
 		
-		if(existIDHostGroup($id) eq "true")
+		if(existNameHostGroup($name) eq "true")
 		{
-			
+			my $id = getHostGroupID($name);
 			my $response;
 			my $json = {
 				jsonrpc => $jsonRPC,
@@ -190,7 +190,7 @@ Returns all hostgroups that exist on the Zabbix server or '0' on failure.
 			$response = $client->call($zabbixApiURL, $json);
 			
 			# Check if response was successful
-			if($response->content->{'result'}) {
+			if(defined($response->content->{'result'})) {
 				return $response->content->{'result'}->{'groupids'}[0];
 				} else {
 					logger("error","Delete Hostgroup failed.");
@@ -229,7 +229,7 @@ Returns all hostgroups that exist on the Zabbix server or '0' on failure.
 		$response = $client->call($zabbixApiURL, $json);
 		
 		# Check if response was successful
-		if($response->content->{'result'}) {
+		if(defined($response->content->{'result'})) {
 				return $response->content->{'result'}[0]->{'groupid'};
 				} else {
 					logger("error","Get Hostgroup id failed.");
@@ -325,6 +325,10 @@ Created 2013 by Stijn Van Paesschen <stijn.van.paesschen@student.groept.be>
 =item 2013-02 Stijn Van Paesschen created.
 
 =item 2013-03-27 Stijn Van Paesschen modified.
+
+=item 2013-05-10 Stijn Van Paesschen modified.
+
+=item 2013-05-11 Stijn Van Paesschen modified.
 
 Added the POD2text documentation.
 
